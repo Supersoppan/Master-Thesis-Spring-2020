@@ -19,8 +19,7 @@ bef = read.csv("kartor\\befolkning.csv", sep =";")
 bensin = read.csv("kartor\\bensin.csv", sep = ";")
 sverige_map = read_sf("kartor\\Kommungränser_SCB_07.shp")
 
-"testar förändringar"
-"testar förändringar igen"
+
 #pre processing data----
 bef = rename(bef, "KNKOD" = ?..Kommun)
 for (i in 1:nrow(bef)){ #recodes kommunkod so that it can be also used by the map
