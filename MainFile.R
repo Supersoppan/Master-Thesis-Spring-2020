@@ -66,6 +66,8 @@ together = merge(q_gas_mun, gas_price, by = "year")
 together = merge(together, pop, by = c("Municipality_name", "year"))
 together$gaspercapita = (as.numeric(together$q)/together$population)*1000000 #divided quantity used by population and multiplied by 1 million. 1000*1000 because 1 qubic meter = 1000L and the data is measured as 1000m3 for each municipality
 together_pseries = pdata.frame(together, index = c("Municipality_name", "year"),  drop.index=TRUE, row.names=TRUE)  
+together_pseries$q = as.numeric(together_pseries$q)
+is.numeric(together_pseries$q)
 
 
 
@@ -86,15 +88,16 @@ summary(together$gaspercapita)
 
 
 
-asd = plm(formula = diff(gaspercapita) ~ diff(Real_Price) + diff(Real_Price)*SKR_name, together_pseries)
+asd = plm(formula = diff(gaspercapita) ~ lag((Real_Price),1) + lag((Real_Price)*SKR_name,1), together_pseries, model = "within", effect = "individual")
 summary(asd)
 
+plot(together_pseries, N = 5)
+
+
+sad = plm(formula = diff(gaspercapita) ~ diff(Real_Price) + diff(Real_Price)*Municipality_code, together_pseries)
+summary(sad)
+
 purtest(hej, exo = "intercept")
-
-plot(asd)
-
-
-
 
 
 
