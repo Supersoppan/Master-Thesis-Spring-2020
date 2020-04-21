@@ -1,4 +1,4 @@
-packages = c("readxl", "tidyverse", "tseries", "plm", "dynlm", "ggplot2")
+packages = c("readxl", "tidyverse", "tseries", "plm", "dynlm", "ggplot2", "urca")
 lapply(packages, library, character.only = TRUE) 
 
 #loading and cleaning----
@@ -21,6 +21,19 @@ CPI = rename(CPI, "year" = observation_date)
 CPI$year = as.Date(CPI$year, format = "%Y-%m-%d")
 CPI$year = factor(format(CPI$year, format = "%Y"))
 
+#loading and pivoting population density
+pop_dens = read_excel("BE0101U1.xlsx", skip = 2) %>% 
+  rename("municipality" = ...1)
+pop_dens = pop_dens[,c("municipality", "2001", "2002", "2003", "2004", "2005", "2006", "2007", "2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016", "2017")]
+pop_dens = pop_dens[1:29,] %>% #removing comments
+  separate(municipality, c("Municipality_code", "Municipality_name"), sep = " ", extra = "merge")
+pop_dens = pivot_longer(pop_dens, 
+               c(`2001`, `2002`, `2003`, `2004`, `2005`, `2006`, `2007`, `2008`, `2009`, `2010`, `2011`, `2012`, `2013`, `2014`, `2015`, `2016`, `2017`),
+               names_to ="year", values_to = "pop_dens") %>% 
+  subset(select=-c(Municipality_code))
+
+  
+  
 #loading and pivoting quantity of gas per municipality
 q_gas_mun = read_excel("quantity gas municipality.xlsx", skip = 2)
 q_gas_mun = rename(q_gas_mun, "municipality" = ...1, "fuel type" = ...2)
@@ -28,26 +41,32 @@ q_gas_mun = q_gas_mun[1:291,] #removing comments
 q_gas_mun = separate(q_gas_mun, municipality, c("Municipality_code", "Municipality_name"), sep = " ", extra = "merge")
 q_gas_mun = pivot_longer(q_gas_mun, 
                          c(`2001`, `2002`, `2003`, `2004`, `2005`, `2006`, `2007`, `2008`, `2009`, `2010`, `2011`, `2012`, `2013`, `2014`, `2015`, `2016`, `2017`),
-                         names_to ="year", values_to = "q")
+                         names_to ="year", values_to = "q")%>% 
+  subset(select=-c(Municipality_code))
 
-
-
-
-#loading and pivoting population per municipality
-pop =  read_excel("be0101_folkmangdkom_1950-2019.xlsx", skip = 5)
-pop = pop[1:290,] #remove comments 
-pop = pop[, c("Kommun", "2001", "2002", "2003", "2004", "2005", "2006", "2007", "2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016", "2017")] #only keeps the relevant years, 2001 until 2017
-pop = subset(pop, Kommun != "Knivsta") #removing knivsta and Heby
-#pop = subset(pop, Kommun != "Heby") #removing knivsta and Heby
-pop = pivot_longer(pop, c(`2001`, `2002`, `2003`, `2004`, `2005`, `2006`, `2007`, `2008`, `2009`, `2010`, `2011`, `2012`, `2013`, `2014`, `2015`, `2016`, `2017`),
-        names_to ="year", values_to = "population")
-pop = rename(pop, "Municipality_name" = Kommun)
+#loading and pivoting amount of men in the population
+men = read_excel("BE0101N1.xlsx", skip = 1) %>% 
+  rename("municipality" = ...1)
+men = men[,c("municipality", "2001", "2002", "2003", "2004", "2005", "2006", "2007", "2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016", "2017")]
+men = men[1:290,] %>% #removing comments
+  separate(municipality, c("Municipality_code", "Municipality_name"), sep = " ", extra = "merge") %>% 
+  pivot_longer(c(`2001`, `2002`, `2003`, `2004`, `2005`, `2006`, `2007`, `2008`, `2009`, `2010`, `2011`, `2012`, `2013`, `2014`, `2015`, `2016`, `2017`), names_to ="year", values_to = "men")%>% 
+  subset(select=-c(Municipality_code))
 
 
 #loading information about municipal attributes
 mun_attributes = read_excel("oversiktstabell-och-lista-kommungruppsindelnin.xlsx", sheet = "Lista Kommungruppsind 2017")
-mun_attributes = rename(mun_attributes, "Municipality_code" = Kommunkod, "SKR_name" = "Kommungrupp 2017 namn")
-mun_attributes = select(mun_attributes, "Municipality_code", "SKR_name")
+mun_attributes = rename(mun_attributes, "Municipality_name" = "Kommun namn", "SKR_name" = "Kommungrupp 2017 namn")
+mun_attributes = select(mun_attributes, "Municipality_name", "SKR_name")
+
+#loading and pivoting population per municipality
+pop =  read_excel("be0101_folkmangdkom_1950-2019.xlsx", skip = 5)
+pop = as.numeric(pop[1:290,]) #remove comments 
+pop = rename(pop, "Municipality_name" = Kommun)
+pop = pop[, c("Municipality_name", "2001", "2002", "2003", "2004", "2005", "2006", "2007", "2008", "2009", "2010", "2011", "2012", "2013", "2014", "2015", "2016", "2017")] #only keeps the relevant years, 2001 until 2017
+pop = pivot_longer(pop, c(`2001`, `2002`, `2003`, `2004`, `2005`, `2006`, `2007`, `2008`, `2009`, `2010`, `2011`, `2012`, `2013`, `2014`, `2015`, `2016`, `2017`),
+        names_to ="year", values_to = "population")
+
 
 #loading and pivoting information about municipal income
 income = read_excel("income.xlsx", skip = 3)
@@ -57,7 +76,8 @@ colnames(income_mean ) <- c("municipality", as.character(c(2001:2017)))
 income_mean = separate(income_mean, municipality, c("Municipality_code", "Municipality_name"), sep = " ", extra = "merge")
 income_mean$`2001` = as.numeric(income_mean$`2001`)
 income_mean = pivot_longer(income_mean, 
-                      c(`2001`, `2002`, `2003`, `2004`, `2005`, `2006`, `2007`, `2008`, `2009`, `2010`, `2011`, `2012`, `2013`, `2014`, `2015`, `2016`, `2017`), names_to ="year", values_to = "income_mean")
+                      c(`2001`, `2002`, `2003`, `2004`, `2005`, `2006`, `2007`, `2008`, `2009`, `2010`, `2011`, `2012`, `2013`, `2014`, `2015`, `2016`, `2017`), names_to ="year", values_to = "income_mean")%>% 
+  subset(select=-c(Municipality_code))
 
 
 income_median = income[,-c(2:42, length(income))]  #divides dataset into two sets. median                      
@@ -65,31 +85,68 @@ colnames(income_median ) <- c("municipality", as.character(c(2001:2017)))
 income_median = separate(income_median, municipality, c("Municipality_code", "Municipality_name"), sep = " ", extra = "merge")
 income_median$`2001` = as.numeric(income_median$`2001`)
 income_median = pivot_longer(income_median, 
-                           c(`2001`, `2002`, `2003`, `2004`, `2005`, `2006`, `2007`, `2008`, `2009`, `2010`, `2011`, `2012`, `2013`, `2014`, `2015`, `2016`, `2017`), names_to ="year", values_to = "income_median")
+                           c(`2001`, `2002`, `2003`, `2004`, `2005`, `2006`, `2007`, `2008`, `2009`, `2010`, `2011`, `2012`, `2013`, `2014`, `2015`, `2016`, `2017`), names_to ="year", values_to = "income_median")%>% 
+  subset(select=-c(Municipality_code))
+
+#loading and pivoting all 3 measures of commuters
+commuters = read_excel("AM0207C6.xlsx", skip = 3)%>% 
+  rename("municipality" = ...1)
+commuters = commuters[1:290,] #removing comments
+commuters = commuters[,-2]
+
+commuters_in = commuters[,1:16]
+colnames(commuters_in) <- c("municipality", as.character(c(2004:2018)))
+commuters_in = separate(commuters_in, municipality, c("Municipality_code", "Municipality_name"), sep = " ", extra = "merge") %>% 
+  pivot_longer(c(`2004`, `2005`, `2006`, `2007`, `2008`, `2009`, `2010`, `2011`, `2012`, `2013`, `2014`, `2015`, `2016`, `2017`, `2018`), names_to ="year", values_to = "commuters_in")%>% 
+  subset(select=-c(Municipality_code))
+
+commuters_out = commuters[,c(1, 17:31)]
+colnames(commuters_out) <- c("municipality", as.character(c(2004:2018)))
+commuters_out = separate(commuters_out, municipality, c("Municipality_code", "Municipality_name"), sep = " ", extra = "merge") %>% 
+  pivot_longer(c(`2004`, `2005`, `2006`, `2007`, `2008`, `2009`, `2010`, `2011`, `2012`, `2013`, `2014`, `2015`, `2016`, `2017`, `2018`), names_to ="year", values_to = "commuters_out")%>% 
+  subset(select=-c(Municipality_code))
+
+commuters_within = commuters[,c(1,32:46)]
+colnames(commuters_within) <- c("municipality", as.character(c(2004:2018)))
+commuters_within = separate(commuters_within, municipality, c("Municipality_code", "Municipality_name"), sep = " ", extra = "merge") %>%   pivot_longer(c(`2004`, `2005`, `2006`, `2007`, `2008`, `2009`, `2010`, `2011`, `2012`, `2013`, `2014`, `2015`, `2016`, `2017`, `2018`), names_to ="year", values_to = "commuters_within")%>% 
+  subset(select=-c(Municipality_code))
+
 
 #merging the data frames
-maindata = merge(q_gas_mun, mun_attributes, by = "Municipality_code") %>% #merging time invariant variables 
+maindata = merge(q_gas_mun, mun_attributes, by = "Municipality_name") %>% #merging time invariant variables 
   merge(CPI, by = "year") %>% #loading individual invariant variables
   merge(fuel_price, by = "year") %>% 
   merge(gas_tax, by = "year") %>% 
   merge(pop, by = c("Municipality_name", "year")) %>% #loading time and individual variant variables
   merge(income_mean, by = c("Municipality_name", "year")) %>% 
-  merge(income_median, by = c("Municipality_name", "year")) 
-maindata = subset(maindata, select=-c(Municipality_code.x,Municipality_code.y))
+  merge(income_median, by = c("Municipality_name", "year")) %>% 
+  merge(men, by = c("Municipality_name", "year")) %>% 
+  merge(commuters_in, by = c("Municipality_name", "year"), all.x = TRUE) %>% 
+  merge(commuters_out, by = c("Municipality_name", "year"), all.x = TRUE) %>% 
+  merge(commuters_within, by = c("Municipality_name", "year"), all.x = TRUE)
+
 
 #calculating relative prices and relative consumption
 maindata$gaspercapita = (as.numeric(maindata$q)/maindata$population)*1000000 #divided quantity used by population and multiplied by 1 million. 1000*1000 because 1 qubic meter = 1000L and the data is measured as 1000m3 for each municipality
+maindata$percentmen = as.numeric(maindata$men/maindata$population) #percantage of men
+maindata$percentin = as.numeric(maindata$commuters_in/maindata$population) #percentage of population that commutes in to the municipality
+maindata$percentout = as.numeric(maindata$commuters_out/maindata$population) #percentage of population that commutes out of the municipality
+maindata$percentwithin = as.numeric(maindata$commuters_within/maindata$population) #percentage of population that commutes within the municipality
 maindata$real_gas_price = as.numeric(maindata$BF95/maindata$SWECPIALLMINMEI)*100 #create deflated gasoline price
 maindata$real_mean_income = as.numeric(maindata$income_mean/maindata$SWECPIALLMINMEI)*100 #create deflated mean income
 maindata$real_median_income = as.numeric(maindata$income_median/maindata$SWECPIALLMINMEI)*100 #create deflated median income
 maindata$real_gas_VAT = as.numeric(as.numeric(maindata$Moms)/maindata$SWECPIALLMINMEI)*100 #create deflated median income
 
 #removing municipalities with NA
-maindata = subset(maindata, Municipality_name != "Heby") #removes Heby since it´s not full
-q_gas_mun = subset(q_gas_mun, Municipality_name != "Knivsta") #removes knivsta since it´s not full
+maindata = subset(maindata, Municipality_name != "Heby") %>% #removes Heby since it´s not full
+  subset(Municipality_name != "Knivsta") #removes knivsta since it´s not full
+
+maindata = maindata[-c(302, 710),]
+
 
 ps_maindata = pdata.frame(maindata, index = c("Municipality_name", "year"),  drop.index=FALSE, row.names=TRUE)  
 ps_maindata$q = as.numeric(ps_maindata$q)
+
 
 
 #Plotting----
@@ -113,11 +170,30 @@ p <- maindata %>%
 xlim(0,1500)
 p
 
+hist(maindata$percentmen, breaks = 2000, xlim = c(0.3,0.6))
+
+
+
+plot(ps_maindata)
 
 hist(maindata$gaspercapita, breaks = 2000, xlim = c(0,900))#as can be seen from the histogram and summary, there appears to be a few outliers, namely those who do not consume any fuel
+
 summary(maindata$gaspercapita)
 
 #Testing----
+
+#ACF and PACF on gaspercapita
+aa = acf(diff(maindata$gaspercapita[1:17]))
+
+aa$acf
+
+print(maindata$Municipality_name[1:17])
+
+#testing first stage between real gas price and real gas VAT
+#Am not able to make the regression work
+FS = lm(model = (diff(real_gas_price) ~ diff(real_gas_VAT)), ps_maindata, subset = (Municipality_name == "Svedala"))
+summary(FS)
+plot(x = diff(maindata$real_gas_VAT), y = diff(maindata$real_gas_price)) #VAT is a really good instrument, high first stage
 
 #tests if the panel data has unit root. Difference in results based on pmax. pmax = 4(no rejection, Unit root present), pmax = 5(Reject, No unit root) 
 data.frame(split(maindata$gaspercapita, maindata$"Municipality_name")) %>% 
@@ -125,31 +201,28 @@ data.frame(split(maindata$gaspercapita, maindata$"Municipality_name")) %>%
   # list of tests: 
   'c("levinlin", "ips", "madwu", "Pm", "invnormal", "logit", "hadri")'
 
-jad = adf.test(ps_maindata$real_gas_price)
-
-jad$
-
-summary(is.na(maindata))
-  
-
-
 #tests if gas price has unit root
-adf.test(maindata$real_gas_price) #ADF test shows that we reject the null. alternative hypothesis is stationarity
-plot(y = maindata$real_gas_price, x = maindata$year)
-  
-asd = plm(formula = (gaspercapita) ~ lag((real_gas_price),0:1) + lag(real_gas_price:SKR_name,0:1), ps_maindata, model = "within", effect = "individual")
-summary(asd)
+adf.test(maindata$real_gas_price[1:17]) #ADF test shows that we DON´T reject the null. alternative hypothesis is stationarity
+plot(y = maindata$real_gas_price[1:17], x = maindata$year[1:17])
+
+
+Test = ca.jo(data.frame(maindata$gaspercapita, maindata$real_gas_price), type = "eigen")
+summary(Test)
+
+
 
 plot(ps_maindata, N = 5)
 
 summary(is.na(maindata))
 
 
-sad = plm(formula = ((gaspercapita)) ~ (lag((gaspercapita))) + ((real_gas_price))  + (((real_gas_price)))*SKR_name + income_median | 
-            (lag(log(q))) + (log(real_gas_VAT))  + ((log(real_gas_VAT)))*SKR_name + income_median, ps_maindata, model = "within", effect = "individual")
+  
+form1 = "diff(log(gaspercapita)) ~ (lag(log(gaspercapita))) + diff(log((real_gas_price)))*SKR_name + income_median + population"
+instr1 =  "~ (lag(log(gaspercapita))) + diff(log((real_VAT_price)))*SKR_name + income_median + population + population"
+model1 = plm(formula = form1, instruments = instr1, ps_maindata, model = "within", effect = "individual")
 summary(sad)
 
-
+#
 
 #Trash----
 #play around with the range to get all kinds of different plots for each municipality
