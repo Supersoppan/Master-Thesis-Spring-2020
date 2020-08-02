@@ -1,4 +1,4 @@
-packages = c("readxl", "tidyverse", "tseries", "plm", "dynlm", "ggplot2", "urca")
+packages = c("readxl", "tidyverse", "tseries", "plm", "dynlm", "ggplot2", "urca", "punitroots")
 lapply(packages, library, character.only = TRUE) 
 
 #loading and cleaning----
@@ -136,12 +136,16 @@ maindata$real_gas_price = as.numeric(maindata$BF95/maindata$SWECPIALLMINMEI)*100
 maindata$real_mean_income = as.numeric(maindata$income_mean/maindata$SWECPIALLMINMEI)*100 #create deflated mean income
 maindata$real_median_income = as.numeric(maindata$income_median/maindata$SWECPIALLMINMEI)*100 #create deflated median income
 maindata$real_gas_VAT = as.numeric(as.numeric(maindata$Moms)/maindata$SWECPIALLMINMEI)*100 #create deflated median income
+maindata$real_gas_tax = as.numeric(as.numeric(maindata$Skatt)/maindata$SWECPIALLMINMEI)*100 #create deflated median income
+maindata$realest_gas_tax = as.numeric(as.numeric((maindata$Skatt)-as.numeric(maindata$Moms))/maindata$SWECPIALLMINMEI)*100 #create deflated median income
 
+maindata = maindata[-c(302, 710),] #removing observatiosn with no gasolone consumption
 #removing municipalities with NA
 maindata = subset(maindata, Municipality_name != "Heby") %>% #removes Heby since it´s not full
-  subset(Municipality_name != "Knivsta") #removes knivsta since it´s not full
+  subset(Municipality_name != "Knivsta") %>%  #removes knivsta since it´s not full
+  subset(Municipality_name != "Åsele")
 
-maindata = maindata[-c(302, 710),]
+
 
 
 ps_maindata = pdata.frame(maindata, index = c("Municipality_name", "year"),  drop.index=FALSE, row.names=TRUE)  
@@ -182,8 +186,28 @@ summary(maindata$gaspercapita)
 
 #Testing----
 
+#unit root of gaspercapita
+UR = data.frame(split(((ps_maindata$percentwithin)), ps_maindata$"Municipality_name")) %>% 
+  purtest( pmax = 10,index = "Municipality_name", exo = "intercept", test = "hadri")
+# list of tests: 
+#  c("levinlin", "ips", "madwu", "Pm", "invnormal", "logit", "hadri")
+
+UR$statistic
+summary(UR)
+UR$statistic
+
+plot(ps_maindata$percentout[1:17])
+
+plot(ps_maindata$percentwithin[18:36])
+
+# gaspercapita is I(1) according to hadri test
+# income_mean and income_median are I(2) according to hadri test
+# percentmen is I(1) according to hadri test
+# commutersin, -out and -within are all I(1) according to hadri test
+
+
 #ACF and PACF on gaspercapita
-aa = acf(diff(maindata$gaspercapita[1:17]))
+aa = acf(diff(maindata$gaspercapita[18:36]))
 
 aa$acf
 
@@ -191,54 +215,89 @@ print(maindata$Municipality_name[1:17])
 
 #testing first stage between real gas price and real gas VAT
 #Am not able to make the regression work
-FS = lm(model = (diff(real_gas_price) ~ diff(real_gas_VAT)), ps_maindata, subset = (Municipality_name == "Svedala"))
+FS = dynlm(model = (diff(real_gas_price) ~ diff(real_gas_VAT)), ps_maindata[1:17])
 summary(FS)
-plot(x = diff(maindata$real_gas_VAT), y = diff(maindata$real_gas_price)) #VAT is a really good instrument, high first stage
 
-#tests if the panel data has unit root. Difference in results based on pmax. pmax = 4(no rejection, Unit root present), pmax = 5(Reject, No unit root) 
-data.frame(split(maindata$gaspercapita, maindata$"Municipality_name")) %>% 
-  purtest( pmax = 5, exo = "intercept", test = "hadri")
-  # list of tests: 
-  'c("levinlin", "ips", "madwu", "Pm", "invnormal", "logit", "hadri")'
+plot(x = diff(maindata$real_gas_tax), y = diff(maindata$real_gas_price)) #VAT is a really good instrument, high first stage
+
+
 
 #tests if gas price has unit root
-adf.test(maindata$real_gas_price[1:17]) #ADF test shows that we DON´T reject the null. alternative hypothesis is stationarity
-plot(y = maindata$real_gas_price[1:17], x = maindata$year[1:17])
+adf.test(diff(maindata$real_gas_price[1:17])) #ADF test shows that we DON´T reject the null. alternative hypothesis is stationarity
+
+plot(y = (maindata$real_gas_price[1:17]), x = maindata$year[1:17])
 
 
-Test = ca.jo(data.frame(maindata$gaspercapita, maindata$real_gas_price), type = "eigen")
-summary(Test)
+which(is.infinite(diff(log(maindata$gaspercapita))))
+        
+#Regressions----
 
 
+#base regression  
+form1 = "diff(log(gaspercapita)) ~ diff((lag(gaspercapita))) + diff(log((real_gas_price)))*SKR_name"
+instr1 =  "~ diff(lag((gaspercapita))) + (log((real_VAT_price)))*SKR_name"
+model1 = plm(formula = form1, ps_maindata, model = "within", effect = "individual")  
+summary(model1)
 
-plot(ps_maindata, N = 5)
+form1 = "diff(log(gaspercapita)) ~ diff((lag(gaspercapita))) + diff(log((real_gas_price)))*SKR_name"
+instr1 =  "~ diff(lag((gaspercapita))) + (log((real_VAT_price)))*SKR_name"
+model1IV = plm(formula = form1, instruments = instr1, ps_maindata, model = "within", effect = "individual")  
+summary(model1IV)
 
-summary(is.na(maindata))
 
+#checking differing income elasticities
+form2 = "diff(log(gaspercapita)) ~ (lag(log(gaspercapita))) + diff(log((real_gas_price)))*SKR_name + income_median*SKR_name + population"
+instr2 =  "~ diff(lag(log(gaspercapita))) + (log((real_VAT_price)))*SKR_name + income_median*SKR_name + population + population"
+model2 = plm(formula = form2, instruments = instr2, ps_maindata, model = "within", effect = "individual")  
 
-  
-form1 = "diff(log(gaspercapita)) ~ (lag(log(gaspercapita))) + diff(log((real_gas_price)))*SKR_name + income_median + population"
-instr1 =  "~ (lag(log(gaspercapita))) + diff(log((real_VAT_price)))*SKR_name + income_median + population + population"
-model1 = plm(formula = form1, instruments = instr1, ps_maindata, model = "within", effect = "individual")
-summary(sad)
-
-#
+#base regression with men and commuters
+form3 = "diff(log(gaspercapita)) ~ (lag(log(gaspercapita))) + diff(log((real_gas_price)))*SKR_name + diff(percentmen) + percentin + percentout + percentwithin"
+instr3 =  "~ diff(lag(log(gaspercapita))) + (log((real_VAT_price)))*SKR_name + population + diff(percentmen) + percentin + percentout + percentwithin"
+model3 = plm(formula = form3, instruments = instr3, ps_maindata, model = "within", effect = "individual")  
+summary(model3)
 
 #Trash----
 #play around with the range to get all kinds of different plots for each municipality
-saved_results = c(1:290)
-for (i in 0:290){
+saved_results = c(1:286)
+for (i in 0:289){
     data = data.frame(maindata$year[(1+i*17):(17+i*17)], maindata$gaspercapita[(1+i*17):(17+i*17)])
   plot(data)
   title(maindata$Municipality_name[1+i*17])
-  saved_results[i] = (adf.test(data$maindata.gaspercapita..1...i...17...17...i...17..))$p.value
+  saved_results[i] = (adf.test(diff(data$maindata.gaspercapita..1...i...17...17...i...17..)))$p.value
 }
 
+diff_results = c(1:3)
+for (i in 0:30){
+  data = data.frame(diff(maindata$gaspercapita[(1+i*17):(17+i*17)]))
+  plot(data)
+  title(maindata$Municipality_name[1+i*17])
+  print(i)
+  diff_results[i] = adf.test(data$diff.maindata.gaspercapita..1...i...17...17...i...17...)$p.value
+  print(diff_results[i])
+}
+
+print(diff_results)
+
+summary(diff_results)
+
+adf.test(maindata$gaspercapita[1:17])
+
+adf.test(maindata$gaspercapita[18:34])
+
+adf.test(diff(maindata$gaspercapita[1:17]))
+
+adf.test(diff(maindata$gaspercapita[18:34]))
+
+plot(diff(maindata$gaspercapita[1:17]))
+
+plot(diff(maindata$gaspercapita[18:33]))
 
 
+dm = (diff(maindata$gaspercapita[1:17]))
+plot(dm)
 
 
-
+write_excel_csv(ps_maindata, path = getwd())
 
 #cointegration panel
 library("pco")
